@@ -1,0 +1,13 @@
+import  requests
+
+url_proxy = "http://47.115.32.***:****/random"#基于proxy_master 
+response_proxy = requests.get(url=url_proxy).text
+print(response_proxy)
+response_proxy = {
+    'http': response_proxy
+}
+try:
+    requests.get('https://movie.douban.com', proxies=response_proxy)
+except:
+    print("'connect failed'")
+# else:
