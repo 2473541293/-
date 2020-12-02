@@ -1,0 +1,18 @@
+#!/usr/bin/python3
+
+#@Readme : 反爬之headers的伪装
+
+# 对于检测Headers的反爬虫
+
+import requests
+import json
+
+
+fake_url="https://fake-useragent.herokuapp.com/browsers/0.1.11"
+fake_list = json.loads(requests.get(fake_url).text)
+print(fake_list["browsers"]["chrome"][1])
+
+headers={
+    'User-Agent':fake_list["browsers"]["chrome"][1]
+}
+
