@@ -1,0 +1,4 @@
+from faker import Factory
+f = Factory.create()
+USER_AGENT = f.user_agent()
+print(USER_AGENT)
