@@ -1,0 +1,180 @@
+#-*- coding:utf-8 -*-
+import requests
+from scrapy import Selector
+import  re
+import json
+import  pymysql
+
+coon=pymysql.connect(host='127.0.0.1',user='root',password='cyb123',db='tp_music')
+cursor = coon.cursor()
+
+def get_value(lis_style):
+    for style in lis_style:
+        for i in range(0, 38):
+            url = 'https://music.163.com/discover/playlist/?cat='+style+'&order=hot&limit=35&offset=' + str(i)
+            response = requests.get(url=url, headers=headers)
+            list_song=Selector(response)
+            lis=list_song.xpath('//ul[@id="m-pl-container"]/li/div/a/@href').getall()
+            for i in range(len(lis)):
+                # 获取歌单详情页地址
+                url = lis[i]
+                list_id = re.findall('\d+', url)[0]
+                full_url = 'https://music.163.com' + url
+                # print(full_url)
+                analysis_url(full_url,list_id)
+def analysis_url(url,list_id):
+    play_url = url
+    s = requests.session()
+    data1 = s.get(play_url, headers=headers)
+    data = Selector(data1)
+    try:
+        song_list_url=data.xpath('//img[@class="j-img"]/@src').getall()[0]
+    except:
+        print(data1.url)
+
+    list_path='./img/songListPic/'+str(list_id)+'.png'
+    list_img = requests.get(song_list_url, headers=headers).content
+    save(list_path,list_img)
+
+    song_list_name = data.xpath('//div[@class="tit"]/h2/text()').getall()[0]
+    song_list_desc = data.xpath('//p[@id="album-desc-more"]/text()').getall()[0]
+    try:
+         list_tag = re.findall('''，标签：(.*)，简介''', data1.text)[0].replace('、','-')
+    except:
+        print(data1.url)
+        list_tag=''
+        print("标签有误")
+    print(play_url)
+
+    #保存歌单信息
+    list_data=(list_id,song_list_name,list_path[1:],song_list_desc,list_tag)
+    save_sql(list_data,1)
+
+    song_name = data.xpath('//ul[@class="f-hide"]/li/a/text()').getall()
+    song_id = data.xpath('//ul[@class="f-hide"]/li/a/@href').getall()
+
+
+    for k, v in dict(zip(song_name, song_id)).items():
+        # 歌曲分析
+        print(k,v)
+        s_d=re.findall('\d+',v)[0]
+        list_song_data=(list_id,s_d)
+        save_sql(list_song_data,2)
+
+        songid = re.findall('\d+', v)[0]
+        song_main_url='http://music.163.com'+v
+        print(song_main_url)
+
+        # img_data = requests.get(url=song_main_url, headers=headers).content
+        song_main_url=requests.get(url=song_main_url,headers=headers)
+        song_page=Selector(song_main_url)
+        song_img_url=song_page.xpath('//img[@class="j-img"]/@src').getall()[0]
+        singer_id=song_page.xpath('//a[@class="s-fc7"]/@href').getall()[0]
+        singer_id=re.findall('\d+',singer_id)[0]
+        singer_name=song_page.xpath('//a[@class="s-fc7"]/text()').getall()[0]
+        # print()
+        Album=song_page.xpath('//a[@class="s-fc7"]/text()').getall()[1]
+        # print(singer_id,singer_name,Album)
+        img_data = requests.get(url=song_img_url, headers=headers).content
+        img_path = './img/songPic/' + str(songid) + '.png'
+        save(img_path,img_data)
+        lyric=get_lyric(songid)
+        #歌曲下载
+        song_url = 'http://music.163.com/song/media/outer/url?id=%s.mp3' % songid
+        song_path = './song/' + k + '.mp3'
+        music = requests.get(song_url, headers=headers).content
+        try:
+           save(song_path,music)
+        except:
+            print(song_url)
+        print("*"*10)
+
+        # print("歌曲信息"+str(song_id),str(song_name),str(singer_id),str(singer_name),str(Album))
+        print(k, v)
+        print(list_song_data)
+        song_data=(songid,singer_id,k,Album,img_path[1:],lyric,song_path[1:],singer_name)
+        save_sql(song_data,3)
+
+
+
+
+# def get_song(song_na,id):
+#     songid = re.findall('\d+', id)[0]
+#     song_main_url = 'http://music.163.com' + songid
+#     # img_data = requests.get(url=song_main_url, headers=headers).content
+#     song_main_url = requests.get(url=song_main_url, headers=headers)
+#     song_page = Selector(song_main_url)
+#     song_img_url = song_page.xpath('//img[@class="j-img"]/@src').getall()[0]
+#     img_data = requests.get(url=song_img_url, headers=headers).content
+#     img_path = './img/songPic/' + str(songid) + '.png'
+#     save(img_path, img_data)
+#     get_lyric(songid)
+#
+#     # 歌曲下载
+#     song_url = 'http://music.163.com/song/media/outer/url?id=%s.mp3' % songid
+#     path = './song/' + song_na + '.mp3'
+#     music = requests.get(song_url, headers=headers).content
+#     try:
+#         save(path, music)
+#     except:
+#         print(song_url)
+
+
+
+def get_lyric(song_id):
+    if not isinstance(song_id, str):
+        song_id = str(song_id)
+    url = f"http://music.163.com/api/song/lyric?id={song_id}+&lv=1&tv=-1"
+    r = requests.get(url, headers=headers)
+    r.raise_for_status()
+    r.encoding = r.apparent_encoding
+    json_obj = json.loads(r.text)
+    try:
+        gc=json_obj["lrc"]["lyric"]
+    except:
+        gc='纯音乐，无歌词'
+        print('纯音乐')
+    return gc
+
+
+
+def save_sql(data,type):
+    try:
+        if type==1:
+          cursor.execute(song_list_sql,data)
+        elif type==2:
+          cursor.execute(list_song_sql,data)
+        elif type==3:
+            cursor.execute(song_sql,data)
+        coon.commit()
+    except:
+        print("数据重复")
+
+
+
+
+def save(path,data):
+    with open(path, 'wb') as f:
+        f.write(data)
+    f.close()
+
+
+if __name__ == '__main__':
+
+    song_list_sql = '''INSERT INTO song_list (list_id, title, pic, introduction, style) VALUES (%s, %s, %s, %s, %s)'''
+    song_sql = '''INSERT INTO song( song_id,singer_id, song_name,introduction,pic,lyric,url,singer_name) VALUES ( %s, %s,%s, %s,%s, %s, %s,%s)'''
+    list_song_sql = '''INSERT INTO list_song (song_id,song_list_id) VALUES (%s, %s)'''
+
+    headers = {
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Cache-Control': 'max-age=0',
+        'Connection': 'keep-alive',
+        'If-None-Match': 'bc54d857335d8fe15cf406d7d0b7ade3',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/531.36 (KHTML, like Gecko) Chrome/84.0.4389.114 Safari/537.36',
+    }
+    list_style=['流行','摇滚']
+    get_value(lis_style=list_style)
+
+
+
